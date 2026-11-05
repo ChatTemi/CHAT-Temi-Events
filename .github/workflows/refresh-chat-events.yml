@@ -1,0 +1,39 @@
+
+name: CHAT official events automatic refresh
+
+on:
+  workflow_dispatch:
+  schedule:
+    # UTC times = Hong Kong 06:37 and 12:11
+    - cron: '37 22 * * *'
+    - cron: '11 4 * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: chat-events-pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Download the CHAT official HTML pages and validate daily sessions
+        run: python cloud/build_public_feed.py --output public --days 14
+      - name: Create Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: public
+      - name: Publish current public JSON
+        id: deployment
+        uses: actions/deploy-pages@v4
