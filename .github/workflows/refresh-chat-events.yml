@@ -1,10 +1,9 @@
-
 name: CHAT official events automatic refresh
 
 on:
   workflow_dispatch:
   schedule:
-    # UTC times = Hong Kong 06:37 and 12:11
+    # UTC = Hong Kong 06:37 and 12:11 (GitHub may delay scheduled runs)
     - cron: '37 22 * * *'
     - cron: '11 4 * * *'
 
@@ -28,12 +27,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Download the CHAT official HTML pages and validate daily sessions
+
+      - name: Download the CHAT official HTML pages and build draft JSON
         run: python cloud/build_public_feed.py --output public --days 14
+
+      - name: Event Data Validation Gate - compare with last published feed
+        run: |
+          python cloud/validate_public_feed.py \
+            --dir public \
+            --baseline-url https://chattemi.github.io/CHAT-Temi-Events/
+
+      # This step and deployment do NOT run if either the parser or gate fails.
       - name: Create Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
           path: public
-      - name: Publish current public JSON
+
+      - name: Publish validated test JSON
         id: deployment
         uses: actions/deploy-pages@v4
