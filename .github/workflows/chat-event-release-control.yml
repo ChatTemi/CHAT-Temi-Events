@@ -1,0 +1,55 @@
+name: CHAT event public release control
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Release control action'
+        required: true
+        type: choice
+        options:
+          - EMERGENCY_DISABLE
+          - RESTORE_INTERNAL_TEST
+          - APPROVE_PUBLIC_7_DAYS
+      review_reference:
+        description: 'Required only for public approval: 3-day Step 11 review reference (no personal data)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chat-event-release-control
+  cancel-in-progress: false
+
+jobs:
+  update-control:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Apply requested control state
+        env:
+          RELEASE_ACTION: ${{ inputs.action }}
+          REVIEW_REFERENCE: ${{ inputs.review_reference }}
+        run: |
+          python cloud/update_release_control.py \
+            --action "$RELEASE_ACTION" \
+            --review-reference "$REVIEW_REFERENCE"
+      - name: Commit only release control JSON
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config/release_control.json
+          if git diff --cached --quiet; then
+            echo "Control file is already in the requested state"
+          else
+            git commit -m "Update CHAT public event release control"
+            git push origin HEAD:main
+          fi
