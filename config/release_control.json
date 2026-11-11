@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "mode": "internal_test",
-  "emergency_disable": false,
+  "emergency_disable": true,
   "approved_at_hkt": null,
   "approval_expires_hkt": null,
   "review_reference": "",
