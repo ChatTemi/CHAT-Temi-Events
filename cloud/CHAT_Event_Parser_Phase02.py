@@ -207,7 +207,7 @@ def date_structure(text, classification):
 
 def index_and_detail_compatible(index_text, detail_text, classification):
     """A confirmed mismatch blocks auto-publication; text-only recurring rules are different."""
-    if classification in {'recurring', 'permanent_display','excluded_private','excluded_digital_or_online','excluded_booking_only','excluded_non_daily','needs_review'}:
+    if classification in {'recurring', 'permanent_exhibition', 'permanent_display','excluded_private','excluded_digital_or_online','excluded_booking_only','excluded_non_daily','needs_review'}:
         return True
     list_dates = date_structure(index_text, classification)['dates']
     detail_dates = date_structure(detail_text, classification)['dates']
@@ -224,6 +224,15 @@ OPERATIONS_EXCLUSIONS = {
     'chat contemporary textile art prize 2027 finalists': 'excluded_non_daily',
 }
 
+# Operations-approved permanent EXHIBITION, not a timed event or public-art display.
+# Match the official English listing AND its "Permanent exhibition" label.
+# Do not broaden this to all permanent displays.
+PERMANENT_EXHIBITION_TITLE = 'Welcome to the Spinning Factory!'
+PERMANENT_EXHIBITION_ID = 'welcome-to-the-spinning-factory-2'
+PERMANENT_EXHIBITION_TITLE_ZH = '紗廠絮語'
+PERMANENT_EXHIBITION_VENUE = 'The D. H. Chen Foundation Gallery'
+
+
 
 def classify(title, display_date, categories):
     # Prefer explicit venue-operational decisions to the site's broad categories.
@@ -232,6 +241,10 @@ def classify(title, display_date, categories):
         return special
     t = (title + ' ' + display_date).lower()
     cats = set(categories)
+    if (title.strip().casefold() == PERMANENT_EXHIBITION_TITLE.casefold()
+            and 'permanent exhibition' in display_date.casefold()
+            and 'exhibition' in cats):
+        return 'permanent_exhibition'
     if 'private' in t or 'by booking' in t:
         return 'excluded_private'
     if 'digital guide' in t or 'online programme' in t or 'online' in cats:
@@ -395,7 +408,7 @@ def attach_details(rows, files):
         date_info=date_structure(row['raw_date_text'],row['classification'])
         row['range_dates']=date_info['range_dates']
         row['date_parse_confidence']=date_info['date_parse_confidence']
-        if not row['raw_date_text']:
+        if not row['raw_date_text'] and row['classification'] != 'permanent_exhibition':
             row['review_reasons'].append('missing_detail_date')
         if row['classification'] in ('scheduled_event','special_event','exhibition') and not row['dates']:
             row['review_reasons'].append('unparsed_detail_date')
@@ -490,6 +503,36 @@ def occurrences_for_day(rows, day, overrides):
             continue
         typ = row['classification']
         if typ.startswith('excluded_') or typ == 'permanent_display':
+            continue
+        if typ == 'permanent_exhibition':
+            # The official permanent exhibition has no seasonal date range.
+            # Include it on regular open days only, with no invented event slots.
+            # Its on-site availability and ad-hoc closures are not verified.
+            if (row['event_id'] != PERMANENT_EXHIBITION_ID
+                    or row['title_en'].strip().casefold() != PERMANENT_EXHIBITION_TITLE.casefold()
+                    or row['review_reasons']
+                    or row['venue_text'].strip().casefold() != PERMANENT_EXHIBITION_VENUE.casefold()
+                    or '11:00' not in {s['start_time'] for s in row['time_slots']}
+                    or '19:00' not in {s['end_time'] for s in row['time_slots']}):
+                continue
+            item = {
+                'event_id': row['event_id'],
+                'occurrence_id': row['event_id'] + '@' + day,
+                'title_zh': PERMANENT_EXHIBITION_TITLE_ZH,
+                'title_en': row['title_en'],
+                'date': day,
+                'venue_text': row['venue_text'],
+                'opening_hours_text': '11:00am–7:00pm',
+                'source_url': row['source_url'],
+                'status': 'permanent_exhibition_from_official_listing',
+                'category': 'current_exhibitions',
+                'exhibition_type': 'permanent',
+                'open_today_verified': False,
+                'route_enabled': False,
+            }
+            item = apply_overrides(item, overrides, day)
+            if item['status'] != 'hidden':
+                exhibitions.append(item)
             continue
         if typ == 'exhibition':
             if row['review_reasons']:

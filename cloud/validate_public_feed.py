@@ -25,6 +25,8 @@ HKT = timezone(timedelta(hours=8))
 ID_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 DEFAULT_BASELINE = "https://chattemi.github.io/CHAT-Temi-Events/"
+PERMANENT_EXHIBITION_ID = "welcome-to-the-spinning-factory-2"
+PERMANENT_EXHIBITION_TITLE = "Welcome to the Spinning Factory!"
 
 
 def read_json(path: Path):
@@ -143,6 +145,23 @@ def validate(folder: Path, baseline_loader, gate: Gate, now=None):
             gate.block(f"{day}: records shown on an unverified/closed venue day")
         if payload.get("venue_open_by_regular_rule") is None:
             gate.block(f"{day}: venue opening rule could not be verified")
+        # Required permanent exhibition must appear in the *exhibition* section
+        # on an ordinary open day. This catches accidental future parser exclusions.
+        permanent_in_ex = [item for item in ex if isinstance(item, dict)
+                           and item.get("event_id") == PERMANENT_EXHIBITION_ID]
+        permanent_in_events = [item for item in ev if isinstance(item, dict)
+                               and item.get("event_id") == PERMANENT_EXHIBITION_ID]
+        if payload.get("venue_open_by_regular_rule") is True:
+            if len(permanent_in_ex) != 1 or permanent_in_events:
+                gate.block(f"{day}: required permanent exhibition absent, duplicated or placed in Today's Events")
+            else:
+                permanent = permanent_in_ex[0]
+                if (permanent.get("title_en") != PERMANENT_EXHIBITION_TITLE
+                        or permanent.get("title_zh") != "紗廠絮語"
+                        or permanent.get("venue_text") != "The D. H. Chen Foundation Gallery"
+                        or permanent.get("exhibition_type") != "permanent"
+                        or permanent.get("opening_hours_text") != "11:00am–7:00pm"):
+                    gate.block(f"{day}: permanent exhibition details changed unexpectedly; review CHAT website")
         seen = set()
         for kind, records in (("today_events", ev), ("current_exhibitions", ex)):
             for item in records:
